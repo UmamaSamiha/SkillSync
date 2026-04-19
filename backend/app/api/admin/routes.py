@@ -15,6 +15,7 @@ from app import db
 from sqlalchemy import func
 import os
 import requests
+from app.utils.helpers import success, error, admin_required, get_current_user
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -221,16 +222,16 @@ def student_classification():
     return success(result)
 
 
-# ── GET /api/admin/personalized-feedback/<user_id> ───────────────────────────
 @admin_bp.route("/personalized-feedback/<user_id>", methods=["GET"])
 @jwt_required()
-@admin_required
 def personalized_feedback(user_id):
-    """
-    Generate personalized feedback message for a student
-    based on their classification, risk level, and grade trend.
-    """
-    user = User.query.filter_by(id=str(user_id), role="student").first()
+    current = get_current_user()
+    if not current:
+        return error("Unauthorized", 401)
+    if current.role == "student" and str(current.id) != str(user_id):
+        return error("Forbidden", 403)
+
+    user = User.query.filter_by(id=str(user_id)).first()
     if not user:
         return error("Student not found", 404)
 
@@ -249,7 +250,6 @@ def personalized_feedback(user_id):
         "risk_level":     risk.risk_level if risk else "low",
         "flags":          risk.flags      if risk else [],
     })
-
 
 # ── CLASSIFICATION ENGINE ─────────────────────────────────────────────────────
 

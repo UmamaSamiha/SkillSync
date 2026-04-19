@@ -10,6 +10,7 @@ import MemberDetailPage from './pages/MemberDetail';
 import AdminDashboard from './pages/AdminDashboard';
 import Certificates from './pages/Certificates';
 import SignupPage from './pages/Signup';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 
 function Layout({ children }) {
@@ -65,6 +66,10 @@ function AppRoutes() {
       {/* Admin Routes */}
       <Route path="/admin" element={
         <PrivateRoute adminOnly={true}><AdminDashboard /></PrivateRoute>
+      }/>
+      
+      <Route path="/analytics" element={
+        <PrivateRoute><AnalyticsPage /></PrivateRoute>
       }/>
 
       <Route path="*" element={<HomeRedirect />} />
