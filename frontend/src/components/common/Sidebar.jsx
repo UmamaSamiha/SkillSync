@@ -1,17 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Timer, History, BarChart2, FolderOpen, Award, ShieldAlert, Users, LogOut, Settings } from 'lucide-react';
+import { LayoutDashboard, Timer, History, BarChart2, FolderOpen, Award, BookOpen, ShieldAlert, Users, LogOut, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import './Sidebar.css';
-
-const studentNav = [
-  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'    },
-  { to: '/focus',        icon: Timer,           label: 'Focus Mode'   },
-  { to: '/history',      icon: History,         label: 'History'      },
-  { to: '/analytics',    icon: BarChart2,       label: 'Analytics'    },
-  { to: '/portfolio',    icon: FolderOpen,      label: 'Portfolio'    },
-  { to: '/certificates', icon: Award,           label: 'Certificates' },
-  { to: '/settings',     icon: Settings,        label: 'Settings'     },
-];
 
 const adminNav = [
   { to: '/admin',        icon: ShieldAlert,     label: 'Admin Panel'  },
@@ -25,6 +15,18 @@ function getInitials(name = '') {
 export default function Sidebar() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
+
+  const studentNav = [
+    { to: '/dashboard',             icon: LayoutDashboard, label: 'Dashboard'     },
+    { to: '/heatmap',               icon: Users,           label: 'Heatmap'       },
+    { to: '/focus',                 icon: Timer,           label: 'Focus Mode'    },
+    { to: '/history',               icon: History,         label: 'History'       },
+    { to: '/analytics',             icon: BarChart2,       label: 'Analytics'     },
+    { to: `/portfolio/${user?.id}`, icon: FolderOpen,      label: 'Portfolio'     },
+    { to: '/certificates',          icon: Award,           label: 'Certificates'  },
+    { to: '/question-bank',         icon: BookOpen,        label: 'Question Bank' },
+    { to: '/settings',              icon: Settings,        label: 'Settings'      },
+  ];
 
   const navItems = isAdmin ? adminNav : studentNav;
 

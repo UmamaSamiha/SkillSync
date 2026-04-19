@@ -11,7 +11,7 @@ from collections import defaultdict
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 from sqlalchemy import func
-
+from app.models import User, Role
 from app import db
 from app.models import (
     User, FocusSession, ActivityLog, EngagementScore,
@@ -38,6 +38,10 @@ def _check_access(current, user_id: str) -> bool:
     # teacher: allow all
     return True
 
+def _require_admin_or_teacher(current) -> bool:
+    if not current:
+        return False
+    return str(current.role) in ("admin", "teacher")
 
 # ── PERFORMANCE ───────────────────────────────────────────────────
 
@@ -188,6 +192,57 @@ def engagement_score(user_id):
             "resource_score": 0, "quiz_score": 0, "total_score": 0,
         }
     })
+
+@analytics_bp.route("/engagement/calculate/<user_id>", methods=["POST"])
+@jwt_required()
+def calculate_engagement_one(user_id):
+    current = get_current_user()
+    if not _check_access(current, user_id):
+        return error("Forbidden", 403)
+    project_id = request.args.get("project_id") or None
+    from app.services.engagement_engine import calculate_engagement
+    result = calculate_engagement(user_id, project_id=project_id)
+    return success({"message": "Engagement score calculated", "score": result})
+
+
+@analytics_bp.route("/engagement/calculate-all", methods=["POST"])
+@jwt_required()
+def calculate_engagement_all():
+    current = get_current_user()
+    if not _require_admin_or_teacher(current):
+        return error("Forbidden — admin or teacher only", 403)
+    project_id = request.args.get("project_id") or None
+    from app.services.engagement_engine import calculate_all_engagement
+    results = calculate_all_engagement(project_id=project_id)
+    success_count = sum(1 for r in results if "error" not in r)
+    return success({"message": f"Calculated for {success_count} students", "success_count": success_count, "results": results})
+
+
+@analytics_bp.route("/engagement-all", methods=["GET"])
+@jwt_required()
+def engagement_all_students():
+    current = get_current_user()
+    if not _require_admin_or_teacher(current):
+        return error("Forbidden — admin or teacher only", 403)
+    students = User.query.filter_by(role=Role.STUDENT, is_active=True).all()
+    result = []
+    for s in students:
+        latest = (
+            EngagementScore.query
+            .filter_by(user_id=s.id)
+            .order_by(EngagementScore.week_start.desc())
+            .first()
+        )
+        result.append({
+            "user": s.to_dict(),
+            "score": latest.to_dict() if latest else {
+                "week_start": None, "forum_score": 0,
+                "submission_score": 0, "resource_score": 0,
+                "quiz_score": 0, "total_score": 0,
+            },
+        })
+    result.sort(key=lambda x: x["score"]["total_score"], reverse=True)
+    return success(result)
 
 
 # ── TOPIC TIME ────────────────────────────────────────────────────

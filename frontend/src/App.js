@@ -10,7 +10,8 @@ import MemberDetailPage from './pages/MemberDetail';
 import AdminDashboard from './pages/AdminDashboard';
 import Certificates from './pages/Certificates';
 import SignupPage from './pages/Signup';
-
+import PortfolioPage from './pages/Portfolio';
+import QuestionBankPage from './pages/QuestionBank';
 
 function Layout({ children }) {
   return (
@@ -56,10 +57,19 @@ function AppRoutes() {
       <Route path="/history" element={
         <PrivateRoute><HistoryPage /></PrivateRoute>
       }/>
+       <Route path="/heatmap" element={
+        <PrivateRoute><HeatmapPage /></PrivateRoute>
+      }/>
+      <Route path="/analytics" element={
+        <PrivateRoute><MemberDetailPage /></PrivateRoute>
+      }/>
       <Route path="/member/:userId" element={
         <PrivateRoute><MemberDetailPage /></PrivateRoute>
       }/>
-      <Route path="/certificates" element={<Certificates />
+      <Route path="/certificates" element={<Certificates />}/>
+      <Route path="/portfolio/:userId" element={<PortfolioPage />} />
+      <Route path="/question-bank" element={
+        <PrivateRoute><QuestionBankPage /></PrivateRoute>
       }/>
 
       {/* Admin Routes */}
