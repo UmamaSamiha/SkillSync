@@ -13,7 +13,7 @@ from flask_jwt_extended import (
 )
 
 from app import db, bcrypt
-from app.models import User, RefreshToken, Role, ActivityLog
+from app.models import User, RefreshToken, Role, ActivityLog, Notification
 from app.utils.helpers import success, error, validate_required, get_current_user
 
 auth_bp = Blueprint("auth", __name__)
@@ -56,26 +56,37 @@ def register():
     if User.query.filter_by(email=email).first():
         return error("Email already registered", 409)
 
-    # Hash password and create user
+    # Hash password and create user — inactive until admin approves
     pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
     user = User(
         email=email,
         password_hash=pw_hash,
         full_name=full_name,
         role=role,
+        is_active=False,  # Pending admin approval
     )
     db.session.add(user)
+    db.session.flush()
+
+    # Notify all admins about the new signup
+    admins = User.query.filter_by(role=Role.ADMIN, is_active=True).all()
+    for admin in admins:
+        n = Notification(
+            user_id     = admin.id,
+            title       = f"New {role.title()} Registration",
+            message     = f"{full_name} ({email}) has registered as a {role}. Please review and approve their account.",
+            type        = "info",
+            entity_type = "user",
+            entity_id   = user.id,
+        )
+        db.session.add(n)
+
     db.session.commit()
 
-    # Issue tokens
-    access_token  = create_access_token(identity=user.id)
-    refresh_token = create_refresh_token(identity=user.id)
-
     return success({
-        "user":          user.to_dict(),
-        "access_token":  access_token,
-        "refresh_token": refresh_token,
-    }, "Registration successful", 201)
+        "pending": True,
+        "message": "Registration successful! Your account is pending admin approval. You will be able to login once approved.",
+    }, "Registration submitted", 201)
 
 
 # ── POST /api/auth/login ──────────────────────────────────────────────────────
@@ -102,7 +113,7 @@ def login():
         return error("Invalid email or password", 401)
 
     if not user.is_active:
-        return error("Account is deactivated. Contact your administrator.", 403)
+        return error("Your account is pending admin approval. Please wait for verification.", 403)
 
     # Update last active
     user.last_active = datetime.now(timezone.utc)

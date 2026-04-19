@@ -8,14 +8,13 @@ student classification, engagement overview.
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession
-from app.utils.helpers import success, error, admin_required
+from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, Notification
+from app.utils.helpers import success, error, admin_required, get_current_user
 from app.services.risk_engine import recalculate_risk
 from app import db
 from sqlalchemy import func
 import os
 import requests
-from app.utils.helpers import success, error, admin_required, get_current_user
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -29,13 +28,77 @@ def admin_overview():
     total_teachers  = User.query.filter_by(role="teacher", is_active=True).count()
     flagged_count   = Submission.query.filter_by(flagged=True).count()
     high_risk_count = RiskProfile.query.filter_by(risk_level="high").count()
+    pending_count   = User.query.filter_by(is_active=False).filter(
+        User.role.in_(["student", "teacher"])
+    ).count()
 
     return success({
         "total_students":  total_students,
         "total_teachers":  total_teachers,
         "flagged_count":   flagged_count,
         "high_risk_count": high_risk_count,
+        "pending_count":   pending_count,
     })
+
+
+# ── GET /api/admin/pending-users ──────────────────────────────────────────────
+@admin_bp.route("/pending-users", methods=["GET"])
+@jwt_required()
+@admin_required
+def pending_users():
+    """Get all users pending approval."""
+    users = User.query.filter_by(is_active=False).filter(
+        User.role.in_(["student", "teacher"])
+    ).order_by(User.created_at.desc()).all()
+
+    return success([u.to_dict() for u in users])
+
+
+# ── POST /api/admin/approve-user/<user_id> ────────────────────────────────────
+@admin_bp.route("/approve-user/<user_id>", methods=["POST"])
+@jwt_required()
+@admin_required
+def approve_user(user_id):
+    """Approve a pending user account."""
+    user = User.query.get_or_404(str(user_id))
+
+    if user.is_active:
+        return error("User is already active", 400)
+
+    user.is_active = True
+    db.session.flush()
+
+    # Notify the user that their account is approved
+    n = Notification(
+        user_id     = user.id,
+        title       = "Account Approved!",
+        message     = f"Welcome to SkillSync, {user.full_name}! Your account has been approved. You can now login.",
+        type        = "info",
+        entity_type = "user",
+        entity_id   = user.id,
+    )
+    db.session.add(n)
+    db.session.commit()
+
+    return success(user.to_dict(), f"{user.full_name}'s account approved")
+
+
+# ── POST /api/admin/reject-user/<user_id> ─────────────────────────────────────
+@admin_bp.route("/reject-user/<user_id>", methods=["POST"])
+@jwt_required()
+@admin_required
+def reject_user(user_id):
+    """Reject and delete a pending user account."""
+    user = User.query.get_or_404(str(user_id))
+
+    if user.is_active:
+        return error("Cannot reject an already active user", 400)
+
+    name = user.full_name
+    db.session.delete(user)
+    db.session.commit()
+
+    return success(None, f"{name}'s registration rejected")
 
 
 # ── GET /api/admin/flagged-submissions ────────────────────────────────────────
@@ -86,7 +149,6 @@ def risk_alerts():
 @jwt_required()
 @admin_required
 def recalc_risk(user_id):
-    # FIX: user_id is UUID string
     user = User.query.get_or_404(str(user_id))
     profile = recalculate_risk(user.id)
     return success(profile.to_dict(), "Risk profile recalculated")
@@ -97,7 +159,6 @@ def recalc_risk(user_id):
 @jwt_required()
 @admin_required
 def recalc_all_risk():
-    """Recalculate risk for every active student."""
     students = User.query.filter_by(role="student", is_active=True).all()
     updated  = []
 
@@ -120,7 +181,6 @@ def recalc_all_risk():
 @jwt_required()
 @admin_required
 def send_risk_alerts():
-    """Send risk alert emails to all medium/high risk students via Resend API."""
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
         return error("RESEND_API_KEY not configured in .env", 500)
@@ -203,7 +263,6 @@ def student_classification():
         risk_level  = risk.risk_level  if risk else "low"
         grade_trend = risk.grade_trend if risk else "stable"
 
-        # Study hours
         total_minutes = db.session.query(
             func.sum(FocusSession.duration_minutes)
         ).filter_by(user_id=s.id).scalar() or 0
@@ -251,6 +310,7 @@ def personalized_feedback(user_id):
         "flags":          risk.flags      if risk else [],
     })
 
+
 # ── CLASSIFICATION ENGINE ─────────────────────────────────────────────────────
 
 def _classify(avg: float, risk) -> str:
@@ -266,8 +326,6 @@ def _classify(avg: float, risk) -> str:
 
 
 def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
-    """Build structured personalized feedback based on student profile."""
-
     base = {
         "Consistent Performer": {
             "tone":    "encouraging",
@@ -303,7 +361,6 @@ def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
 
     result = base.get(classification, base["Average"]).copy()
 
-    # Append flag-specific tips
     if risk and risk.flags:
         if "frequent_late_submissions" in risk.flags:
             result["actions"].append("Submit assignments before deadlines")
@@ -318,8 +375,6 @@ def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
 # ── EMAIL BUILDER ─────────────────────────────────────────────────────────────
 
 def _build_email(student, profile) -> tuple:
-    """Build subject and HTML email for a risk alert."""
-
     risk_level  = profile.risk_level
     grade_trend = profile.grade_trend or "stable"
     late_count  = profile.late_submission_count or 0
