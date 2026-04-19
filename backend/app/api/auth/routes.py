@@ -56,14 +56,14 @@ def register():
     if User.query.filter_by(email=email).first():
         return error("Email already registered", 409)
 
-    # Hash password and create user — inactive until admin approves
+    # Hash password and create user — active immediately
     pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
     user = User(
         email=email,
         password_hash=pw_hash,
         full_name=full_name,
         role=role,
-        is_active=False,  # Pending admin approval
+        is_active=True,
     )
     db.session.add(user)
     db.session.flush()
@@ -74,7 +74,7 @@ def register():
         n = Notification(
             user_id     = admin.id,
             title       = f"New {role.title()} Registration",
-            message     = f"{full_name} ({email}) has registered as a {role}. Please review and approve their account.",
+            message     = f"{full_name} ({email}) has registered as a {role}.",
             type        = "info",
             entity_type = "user",
             entity_id   = user.id,
@@ -83,10 +83,14 @@ def register():
 
     db.session.commit()
 
+    access_token  = create_access_token(identity=user.id)
+    refresh_token = create_refresh_token(identity=user.id)
+
     return success({
-        "pending": True,
-        "message": "Registration successful! Your account is pending admin approval. You will be able to login once approved.",
-    }, "Registration submitted", 201)
+        "user":          user.to_dict(),
+        "access_token":  access_token,
+        "refresh_token": refresh_token,
+    }, "Registration successful", 201)
 
 
 # ── POST /api/auth/login ──────────────────────────────────────────────────────

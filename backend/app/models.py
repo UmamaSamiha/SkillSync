@@ -171,12 +171,14 @@ class Assignment(db.Model):
     max_score   = db.Column(db.Float, default=100.0)
     difficulty  = db.Column(db.String(20), default=DifficultyLevel.INTERMEDIATE)
     allow_late  = db.Column(db.Boolean, default=False)
+    is_group    = db.Column(db.Boolean, default=False)
     created_at  = db.Column(db.DateTime(timezone=True), default=now_utc)
     updated_at  = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     project     = db.relationship("Project", back_populates="assignments")
     topic       = db.relationship("Topic", back_populates="assignments")
     creator     = db.relationship("User", foreign_keys=[created_by])
     submissions = db.relationship("Submission", back_populates="assignment", lazy="dynamic")
+    groups      = db.relationship("AssignmentGroup", back_populates="assignment", lazy="dynamic")
 
     def to_dict(self):
         return {
@@ -189,14 +191,44 @@ class Assignment(db.Model):
             "max_score":   self.max_score,
             "difficulty":  self.difficulty,
             "allow_late":  self.allow_late,
+            "is_group":    self.is_group,
             "created_at":  self.created_at.isoformat(),
         }
+
+class AssignmentGroup(db.Model):
+    __tablename__ = "assignment_groups"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    assignment_id = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=False)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+    assignment    = db.relationship("Assignment", back_populates="groups")
+    members       = db.relationship("GroupMembership", back_populates="group", lazy="dynamic")
+    submission    = db.relationship("Submission", back_populates="group", uselist=False)
+
+    def to_dict(self):
+        return {
+            "id":            self.id,
+            "assignment_id": self.assignment_id,
+            "members": [{"user_id": m.student_id, "full_name": m.student.full_name}
+                        for m in self.members.all()],
+        }
+
+
+class GroupMembership(db.Model):
+    __tablename__ = "group_memberships"
+    id         = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    group_id   = db.Column(db.String(36), db.ForeignKey("assignment_groups.id"), nullable=False)
+    student_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    group      = db.relationship("AssignmentGroup", back_populates="members")
+    student    = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("group_id", "student_id"),)
+
 
 class Submission(db.Model):
     __tablename__ = "submissions"
     id               = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     assignment_id    = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=False)
     student_id       = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    group_id         = db.Column(db.String(36), db.ForeignKey("assignment_groups.id"), nullable=True)
     content          = db.Column(db.Text, nullable=True)
     file_path        = db.Column(db.String(500), nullable=True)
     file_name        = db.Column(db.String(255), nullable=True)
@@ -212,9 +244,10 @@ class Submission(db.Model):
     ai_score         = db.Column(db.Float, nullable=True)
     similarity_score = db.Column(db.Float, nullable=True)
     flagged          = db.Column(db.Boolean, default=False)
-    assignment  = db.relationship("Assignment", back_populates="submissions")
-    student     = db.relationship("User", foreign_keys=[student_id], back_populates="submissions")
-    grader      = db.relationship("User", foreign_keys=[graded_by])
+    assignment   = db.relationship("Assignment", back_populates="submissions")
+    student      = db.relationship("User", foreign_keys=[student_id], back_populates="submissions")
+    grader       = db.relationship("User", foreign_keys=[graded_by])
+    group        = db.relationship("AssignmentGroup", back_populates="submission")
     edit_history = db.relationship("EditHistory", back_populates="submission", lazy="dynamic")
 
     def to_dict(self):
@@ -222,13 +255,17 @@ class Submission(db.Model):
             "id":               self.id,
             "assignment_id":    self.assignment_id,
             "student_id":       self.student_id,
+            "content":          self.content,
+            "file_name":        self.file_name,
             "status":           self.status,
             "score":            self.score,
+            "feedback":         self.feedback,
             "is_late":          self.is_late,
             "submitted_at":     self.submitted_at.isoformat() if self.submitted_at else None,
             "ai_score":         self.ai_score,
             "similarity_score": self.similarity_score,
             "flagged":          self.flagged,
+            "group_id":         self.group_id,
         }
 
 class EditHistory(db.Model):
@@ -446,4 +483,76 @@ class Notification(db.Model):
             "type":       self.type,
             "is_read":    self.is_read,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+# ── Courses ───────────────────────────────────────────────────────────────────
+
+class Course(db.Model):
+    __tablename__ = "courses"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    code          = db.Column(db.String(20), unique=True, nullable=False)
+    title         = db.Column(db.String(200), nullable=False)
+    description   = db.Column(db.Text, nullable=True)
+    credits       = db.Column(db.Integer, default=3)
+    topic_keyword = db.Column(db.String(100), nullable=True)
+    instructor_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+
+    instructor  = db.relationship("User", foreign_keys=[instructor_id])
+    enrollments = db.relationship("CourseEnrollment", back_populates="course", lazy="dynamic")
+    time_logs   = db.relationship("TimeLog", back_populates="course", lazy="dynamic")
+
+    def to_dict(self):
+        return {
+            "id":            self.id,
+            "code":          self.code,
+            "title":         self.title,
+            "description":   self.description,
+            "credits":       self.credits,
+            "topic_keyword": self.topic_keyword,
+            "instructor":    self.instructor.full_name if self.instructor else None,
+        }
+
+
+class CourseEnrollment(db.Model):
+    __tablename__ = "course_enrollments"
+    id          = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    course_id   = db.Column(db.String(36), db.ForeignKey("courses.id"), nullable=False)
+    student_id  = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    enrolled_at = db.Column(db.DateTime(timezone=True), default=now_utc)
+
+    course  = db.relationship("Course", back_populates="enrollments")
+    student = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("course_id", "student_id"),)
+
+
+# ── Time Logs ─────────────────────────────────────────────────────────────────
+
+class TimeLog(db.Model):
+    __tablename__ = "time_logs"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    user_id       = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False, index=True)
+    course_id     = db.Column(db.String(36), db.ForeignKey("courses.id"), nullable=True)
+    assignment_id = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=True)
+    description   = db.Column(db.String(300), nullable=True)
+    minutes       = db.Column(db.Integer, nullable=False)
+    log_type      = db.Column(db.String(20), default="study")  # study | assignment
+    logged_at     = db.Column(db.Date, nullable=False)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+
+    user       = db.relationship("User")
+    course     = db.relationship("Course", back_populates="time_logs")
+    assignment = db.relationship("Assignment")
+
+    def to_dict(self):
+        return {
+            "id":            self.id,
+            "course_id":     self.course_id,
+            "assignment_id": self.assignment_id,
+            "description":   self.description,
+            "minutes":       self.minutes,
+            "log_type":      self.log_type,
+            "logged_at":     self.logged_at.isoformat() if self.logged_at else None,
+            "course_title":  self.course.title if self.course else None,
         }

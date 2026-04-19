@@ -58,6 +58,9 @@ def create_app(config_name: str = None) -> Flask:
     from app.api.focus.routes        import focus_bp
     from app.api.heatmap.routes      import heatmap_bp
     from app.api.certificates.routes import certificates_bp
+    from app.api.notifications.routes import notifications_bp
+    from app.api.courses.routes        import courses_bp
+    from app.api.timelogs.routes       import timelogs_bp
 
     app.register_blueprint(auth_bp,         url_prefix="/api/auth")
     app.register_blueprint(users_bp,        url_prefix="/api/users")
@@ -68,6 +71,9 @@ def create_app(config_name: str = None) -> Flask:
     app.register_blueprint(focus_bp,        url_prefix="/api/focus")
     app.register_blueprint(heatmap_bp,      url_prefix="/api/heatmap")
     app.register_blueprint(certificates_bp, url_prefix="/api/certificates")
+    app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
+    app.register_blueprint(courses_bp,      url_prefix="/api/courses")
+    app.register_blueprint(timelogs_bp,     url_prefix="/api/timelogs")
 
     # ── JWT Callbacks ─────────────────────────────────────────────
     @jwt.expired_token_loader

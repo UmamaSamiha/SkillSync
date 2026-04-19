@@ -15,7 +15,7 @@ from app.models import (
     FocusSession, ActivityLog, EngagementScore, Portfolio,
     PortfolioProject, GradeRecord, RiskProfile, Certificate,
     Notification, EditHistory, SubmissionStatus, SessionStatus,
-    Role, DifficultyLevel
+    Role, DifficultyLevel, Course, CourseEnrollment, TimeLog
 )
 
 
@@ -124,18 +124,41 @@ def seed_all():
         db.session.flush()
         topics.append(t)
 
+    # ── Courses ───────────────────────────────────────────────────────────
+    course_defs = [
+        ("CS101",  "Introduction to Programming",    "Learn Python fundamentals, control flow, and basic data structures.", 3, "python programming beginner"),
+        ("CS201",  "Data Structures and Algorithms", "Arrays, linked lists, trees, sorting, and complexity analysis.",      3, "data structures algorithms"),
+        ("CS301",  "Database Systems",               "Relational models, SQL, normalization, and transaction management.",  3, "database systems SQL"),
+        ("CS401",  "Computer Networks",              "OSI model, TCP/IP, routing protocols, and network security.",         3, "computer networks TCP IP"),
+        ("CS499B", "Software Engineering Capstone",  "Full-stack development of a real-world LMS platform as a team.",     4, "software engineering agile"),
+    ]
+    courses = []
+    for code, title, desc, credits, keyword in course_defs:
+        c = Course(
+            code=code, title=title, description=desc,
+            credits=credits, topic_keyword=keyword,
+            instructor_id=teacher.id,
+        )
+        db.session.add(c)
+        db.session.flush()
+        courses.append(c)
+
+    for student in students:
+        for course in courses:
+            db.session.add(CourseEnrollment(course_id=course.id, student_id=student.id))
+
     # ── Assignments ───────────────────────────────────────────────────────
     assignment_defs = [
-        ("ER Diagram Design",      topics[0].id, date(2026, 1, 20)),
-        ("SQL Query Optimization", topics[0].id, date(2026, 2, 5)),
-        ("Sorting Algorithm",      topics[1].id, date(2026, 2, 20)),
-        ("System Design Report",   topics[2].id, date(2026, 3, 5)),
-        ("Network Protocols",      topics[3].id, date(2026, 3, 20)),
-        ("Database Normalization", topics[0].id, date(2026, 4, 1)),
+        ("ER Diagram Design",      topics[0].id, date(2026, 1, 20), False),
+        ("SQL Query Optimization", topics[0].id, date(2026, 2, 5),  False),
+        ("Sorting Algorithm",      topics[1].id, date(2026, 2, 20), False),
+        ("System Design Report",   topics[2].id, date(2026, 3, 5),  True),
+        ("Network Protocols",      topics[3].id, date(2026, 3, 20), True),
+        ("Database Normalization", topics[0].id, date(2026, 4, 1),  False),
     ]
 
     assignments = []
-    for title, topic_id, due in assignment_defs:
+    for title, topic_id, due, is_group in assignment_defs:
         a = Assignment(
             project_id  = project.id,
             topic_id    = topic_id,
@@ -144,6 +167,7 @@ def seed_all():
             description = f"Complete the {title} assignment as per course guidelines.",
             due_date    = datetime.combine(due, datetime.min.time()).replace(tzinfo=timezone.utc),
             max_score   = 100.0,
+            is_group    = is_group,
         )
         db.session.add(a)
         db.session.flush()
@@ -304,6 +328,33 @@ def seed_all():
             role         = "Full Stack Developer",
             is_featured  = True,
         ))
+
+    # ── Time Logs ─────────────────────────────────────────────────────────
+    for idx, student in enumerate(students):
+        _, _, _, _, _, _, focus_mult = STUDENT_PROFILES[idx]
+        for day_offset in range(21):
+            log_date = (datetime.now(timezone.utc) - timedelta(days=day_offset)).date()
+            # 1-3 study sessions per day linked to random courses
+            for _ in range(random.randint(1, 3)):
+                mins = random.choice([25, 30, 45, 50, 60, 90])
+                db.session.add(TimeLog(
+                    user_id   = student.id,
+                    course_id = random.choice(courses).id,
+                    description = "Study session",
+                    minutes   = int(mins * focus_mult),
+                    log_type  = "study",
+                    logged_at = log_date,
+                ))
+            # Some assignment writing time
+            if random.random() < 0.4:
+                db.session.add(TimeLog(
+                    user_id       = student.id,
+                    assignment_id = random.choice(assignments).id,
+                    description   = "Working on assignment",
+                    minutes       = random.randint(20, 90),
+                    log_type      = "assignment",
+                    logged_at     = log_date,
+                ))
 
     # ── Notifications ─────────────────────────────────────────────────────
     for student in students:
