@@ -7,7 +7,6 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On mount, restore user from stored token
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) { setLoading(false); return; }
@@ -27,8 +26,8 @@ export function AuthProvider({ children }) {
     return user;
   };
 
-  const signup = async (email, password, full_name) => {
-    const res = await api.post('/auth/register', { email, password, full_name });
+  const signup = async (email, password, full_name, role = 'student') => {
+    const res = await api.post('/auth/register', { email, password, full_name, role });
     const { user, access_token, refresh_token } = res.data.data;
     localStorage.setItem('access_token',  access_token);
     localStorage.setItem('refresh_token', refresh_token);

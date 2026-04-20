@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [confirm,  setConfirm]  = useState('');
+  const [role,     setRole]     = useState('student');
   const [loading,  setLoading]  = useState(false);
   const { signup } = useAuth();
   const navigate   = useNavigate();
@@ -19,7 +20,7 @@ export default function SignupPage() {
     if (password.length < 8)  { toast.error('Password must be at least 8 characters'); return; }
     setLoading(true);
     try {
-      const user = await signup(email, password, fullName);
+      const user = await signup(email, password, fullName, role);
       toast.success('Account created!');
       navigate(user.role === 'admin' ? '/admin' : '/dashboard');
     } catch (err) {
@@ -43,8 +44,8 @@ export default function SignupPage() {
           </p>
           <div className="login-preview-cards">
             <div className="preview-card"><div className="preview-dot green" /><span>Track daily study streaks</span></div>
-            <div className="preview-card"><div className="preview-dot amber" /><span>Focus sessions with Pomodoro timer</span></div>
-            <div className="preview-card"><div className="preview-dot red" /><span>Earn certificates for milestones</span></div>
+            <div className="preview-card"><div className="preview-dot amber" /><span>Prerequisite-based learning path</span></div>
+            <div className="preview-card"><div className="preview-dot red" /><span>Build and share your portfolio</span></div>
           </div>
         </div>
       </div>
@@ -66,6 +67,20 @@ export default function SignupPage() {
             <label htmlFor="email">Email</label>
             <input id="email" type="email" className="input" placeholder="you@university.edu"
               value={email} onChange={e => setEmail(e.target.value)} required />
+          </div>
+
+          <div className="login-field">
+            <label htmlFor="role">I am a</label>
+            <select
+              id="role"
+              className="input"
+              value={role}
+              onChange={e => setRole(e.target.value)}
+              style={{ cursor: 'pointer' }}
+            >
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
           </div>
 
           <div className="login-field">

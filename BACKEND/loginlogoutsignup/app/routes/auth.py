@@ -1,10 +1,3 @@
-"""
-SkillSync — Auth API
-=====================
-Endpoints: register, login, refresh token, logout, me, change-password.
-JWT-based with bcrypt password hashing.
-"""
-
 from datetime import datetime, timezone
 from flask import Blueprint, request
 from flask_jwt_extended import (
@@ -21,7 +14,6 @@ auth_bp = Blueprint("auth", __name__)
 
 
 def _store_refresh_token(user_id, refresh_token):
-    """Decode the refresh token and save its JTI to the database."""
     decoded = decode_token(refresh_token)
     db.session.add(RefreshToken(user_id=user_id, token_jti=decoded["jti"]))
     db.session.commit()
@@ -41,9 +33,12 @@ def register():
     password  = data["password"]
     full_name = data["full_name"].strip()
 
-    # Public registration is always student — admin/teacher accounts
-    # must be created by an existing admin through a separate endpoint.
-    role = Role.STUDENT
+    # Allow student or teacher roles on signup — admin must be seeded
+    requested_role = data.get("role", "student").lower()
+    if requested_role == "teacher":
+        role = Role.TEACHER
+    else:
+        role = Role.STUDENT
 
     if "@" not in email or "." not in email.split("@")[-1]:
         return error("Invalid email address", 400)
@@ -134,11 +129,9 @@ def logout():
     jti     = get_jwt()["jti"]
     user_id = get_jwt_identity()
 
-    # Add current access token to the blocklist so it can't be reused
     if not RevokedToken.query.filter_by(jti=jti).first():
         db.session.add(RevokedToken(jti=jti))
 
-    # Also revoke any stored refresh tokens for this user
     active_tokens = RefreshToken.query.filter_by(user_id=int(user_id), revoked=False).all()
     for rt in active_tokens:
         rt.revoked = True
@@ -146,7 +139,6 @@ def logout():
             db.session.add(RevokedToken(jti=rt.token_jti))
 
     db.session.commit()
-
     return success(None, "Logged out successfully")
 
 

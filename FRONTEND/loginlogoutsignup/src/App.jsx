@@ -3,14 +3,14 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/common/Sidebar';
 import LoginPage from './pages/Login';
-import HeatmapPage from './pages/Heatmap';
-import FocusPage from './pages/Focus';
-import HistoryPage from './pages/History';
 import MemberDetailPage from './pages/MemberDetail';
 import AdminDashboard from './pages/AdminDashboard';
-import Certificates from './pages/Certificates';
+import AdminEditDashboard from './pages/AdminEditDashboard';
 import SignupPage from './pages/Signup';
-
+import CurriculumPage from './pages/Curriculum';
+import PortfolioPage from './pages/Portfolio';
+import QuestionBankPage from './pages/QuestionBank';
+import EditTracker from './pages/EditTracker';
 
 function Layout({ children }) {
   return (
@@ -23,11 +23,12 @@ function Layout({ children }) {
   );
 }
 
-function PrivateRoute({ children, adminOnly }) {
+function PrivateRoute({ children, adminOnly, teacherOnly }) {
   const { user, loading } = useAuth();
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   if (adminOnly && user.role !== 'admin') return <Navigate to="/dashboard" />;
+  if (teacherOnly && user.role !== 'teacher' && user.role !== 'admin') return <Navigate to="/dashboard" />;
   return <Layout>{children}</Layout>;
 }
 
@@ -36,6 +37,7 @@ function HomeRedirect() {
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   if (user.role === 'admin') return <Navigate to="/admin" />;
+  if (user.role === 'teacher') return <Navigate to="/teacher" />;
   return <Navigate to="/dashboard" />;
 }
 
@@ -47,14 +49,20 @@ function AppRoutes() {
       <Route path="/signup" element={<SignupPage />} />
 
       {/* Student Routes */}
-      <Route path="/dashboard" element={<PrivateRoute><HeatmapPage /></PrivateRoute>} />
-      <Route path="/focus"     element={<PrivateRoute><FocusPage /></PrivateRoute>} />
-      <Route path="/history"   element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-      <Route path="/member/:userId" element={<PrivateRoute><MemberDetailPage /></PrivateRoute>} />
-      <Route path="/certificates"   element={<PrivateRoute><Certificates /></PrivateRoute>} />
+      <Route path="/dashboard"         element={<PrivateRoute><CurriculumPage /></PrivateRoute>} />
+      <Route path="/curriculum"        element={<PrivateRoute><CurriculumPage /></PrivateRoute>} />
+      <Route path="/portfolio/:userId" element={<PrivateRoute><PortfolioPage /></PrivateRoute>} />
+      <Route path="/question-bank"     element={<PrivateRoute><QuestionBankPage /></PrivateRoute>} />
+      <Route path="/submit"            element={<PrivateRoute><EditTracker /></PrivateRoute>} />
+      <Route path="/member/:userId"    element={<PrivateRoute><MemberDetailPage /></PrivateRoute>} />
+
+      {/* Teacher Routes */}
+      <Route path="/teacher"       element={<PrivateRoute teacherOnly><AdminDashboard /></PrivateRoute>} />
+      <Route path="/teacher/edits" element={<PrivateRoute teacherOnly><AdminEditDashboard /></PrivateRoute>} />
 
       {/* Admin Routes */}
-      <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminDashboard /></PrivateRoute>} />
+      <Route path="/admin"        element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
+      <Route path="/admin/edits"  element={<PrivateRoute adminOnly><AdminEditDashboard /></PrivateRoute>} />
 
       <Route path="*" element={<HomeRedirect />} />
     </Routes>

@@ -3,17 +3,6 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import './Sidebar.css';
 
-const studentLinks = [
-  { to: '/dashboard',    label: 'Dashboard',     icon: '▦' },
-  { to: '/focus',        label: 'Focus',          icon: '◎' },
-  { to: '/history',      label: 'History',        icon: '◷' },
-  { to: '/certificates', label: 'Certificates',   icon: '✦' },
-];
-
-const adminLinks = [
-  { to: '/admin', label: 'Admin Panel', icon: '⚙' },
-];
-
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -24,7 +13,30 @@ export default function Sidebar() {
     navigate('/login');
   };
 
-  const links = user?.role === 'admin' ? adminLinks : studentLinks;
+  const studentLinks = [
+    { to: '/dashboard',             label: 'Dashboard',    icon: '▦' },
+    { to: '/curriculum',            label: 'Learning Path', icon: '🎯' },
+    { to: `/portfolio/${user?.id}`, label: 'Portfolio',     icon: '🎓' },
+    { to: '/question-bank',         label: 'Question Bank', icon: '📚' },
+    { to: '/submit',                label: 'Submit Work',   icon: '📝' },
+  ];
+
+  const teacherLinks = [
+    { to: '/teacher',       label: 'Dashboard',     icon: '▦' },
+    { to: '/teacher/edits', label: 'Edit Tracking', icon: '🔍' },
+    { to: '/question-bank', label: 'Question Bank', icon: '📚' },
+  ];
+
+  const adminLinks = [
+    { to: '/admin',         label: 'Admin Panel',   icon: '⚙' },
+    { to: '/admin/edits',   label: 'Edit Tracking', icon: '🔍' },
+    { to: '/question-bank', label: 'Question Bank', icon: '📚' },
+  ];
+
+  const links =
+    user?.role === 'admin'   ? adminLinks   :
+    user?.role === 'teacher' ? teacherLinks :
+    studentLinks;
 
   return (
     <aside className="sidebar">
@@ -32,7 +44,6 @@ export default function Sidebar() {
         <span className="logo-dot" />
         <span className="sidebar-logo-text">SkillSync</span>
       </div>
-
       <nav className="sidebar-nav">
         {links.map(({ to, label, icon }) => (
           <NavLink
@@ -45,7 +56,6 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-
       <div className="sidebar-footer">
         <div className="sidebar-user">
           <div className="sidebar-avatar">
