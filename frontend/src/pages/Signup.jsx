@@ -46,11 +46,9 @@ export default function SignupPage() {
 
       toast.success(`Welcome to SkillSync, ${user.full_name}!`);
 
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
+      if (user.role === 'admin')        navigate('/admin');
+      else if (user.role === 'teacher') navigate('/teacher');
+      else                              navigate('/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');
     } finally {

@@ -182,12 +182,14 @@ class Assignment(db.Model):
     max_score   = db.Column(db.Float, default=100.0)
     difficulty  = db.Column(db.String(20), default=DifficultyLevel.INTERMEDIATE)
     allow_late  = db.Column(db.Boolean, default=False)
+    is_group    = db.Column(db.Boolean, default=False)
     created_at  = db.Column(db.DateTime(timezone=True), default=now_utc)
     updated_at  = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     project     = db.relationship("Project", back_populates="assignments")
     topic       = db.relationship("Topic", back_populates="assignments")
     creator     = db.relationship("User", foreign_keys=[created_by])
     submissions = db.relationship("Submission", back_populates="assignment", lazy="dynamic")
+    groups      = db.relationship("AssignmentGroup", back_populates="assignment", lazy="dynamic")
 
     def to_dict(self):
         return {
@@ -200,14 +202,44 @@ class Assignment(db.Model):
             "max_score":   self.max_score,
             "difficulty":  self.difficulty,
             "allow_late":  self.allow_late,
+            "is_group":    self.is_group,
             "created_at":  self.created_at.isoformat(),
         }
+
+class AssignmentGroup(db.Model):
+    __tablename__ = "assignment_groups"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    assignment_id = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=False)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+    assignment    = db.relationship("Assignment", back_populates="groups")
+    members       = db.relationship("GroupMembership", back_populates="group", lazy="dynamic")
+    submission    = db.relationship("Submission", back_populates="group", uselist=False)
+
+    def to_dict(self):
+        return {
+            "id":            self.id,
+            "assignment_id": self.assignment_id,
+            "members": [{"user_id": m.student_id, "full_name": m.student.full_name}
+                        for m in self.members.all()],
+        }
+
+
+class GroupMembership(db.Model):
+    __tablename__ = "group_memberships"
+    id         = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    group_id   = db.Column(db.String(36), db.ForeignKey("assignment_groups.id"), nullable=False)
+    student_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    group      = db.relationship("AssignmentGroup", back_populates="members")
+    student    = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("group_id", "student_id"),)
+
 
 class Submission(db.Model):
     __tablename__ = "submissions"
     id               = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     assignment_id    = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=False)
     student_id       = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    group_id         = db.Column(db.String(36), db.ForeignKey("assignment_groups.id"), nullable=True)
     content          = db.Column(db.Text, nullable=True)
     file_path        = db.Column(db.String(500), nullable=True)
     file_name        = db.Column(db.String(255), nullable=True)
@@ -223,9 +255,10 @@ class Submission(db.Model):
     ai_score         = db.Column(db.Float, nullable=True)
     similarity_score = db.Column(db.Float, nullable=True)
     flagged          = db.Column(db.Boolean, default=False)
-    assignment  = db.relationship("Assignment", back_populates="submissions")
-    student     = db.relationship("User", foreign_keys=[student_id], back_populates="submissions")
-    grader      = db.relationship("User", foreign_keys=[graded_by])
+    assignment   = db.relationship("Assignment", back_populates="submissions")
+    student      = db.relationship("User", foreign_keys=[student_id], back_populates="submissions")
+    grader       = db.relationship("User", foreign_keys=[graded_by])
+    group        = db.relationship("AssignmentGroup", back_populates="submission")
     edit_history = db.relationship("EditHistory", back_populates="submission", lazy="dynamic")
 
     def to_dict(self):
@@ -233,13 +266,17 @@ class Submission(db.Model):
             "id":               self.id,
             "assignment_id":    self.assignment_id,
             "student_id":       self.student_id,
+            "content":          self.content,
+            "file_name":        self.file_name,
             "status":           self.status,
             "score":            self.score,
+            "feedback":         self.feedback,
             "is_late":          self.is_late,
             "submitted_at":     self.submitted_at.isoformat() if self.submitted_at else None,
             "ai_score":         self.ai_score,
             "similarity_score": self.similarity_score,
             "flagged":          self.flagged,
+            "group_id":         self.group_id,
         }
 
 class EditHistory(db.Model):
@@ -458,8 +495,7 @@ class Notification(db.Model):
             "is_read":    self.is_read,
             "created_at": self.created_at.isoformat(),
         }
-    
-    # =============================================================================
+# =============================================================================
 # QUESTION BANK
 # =============================================================================
 
@@ -471,14 +507,12 @@ class QuestionType:
     CODING       = "coding"
 
 
-# Association table: QuestionBank ↔ Topic
 bank_topics = db.Table(
     "bank_topics",
     db.Column("bank_id",  db.String(36), db.ForeignKey("question_banks.id"), primary_key=True),
     db.Column("topic_id", db.String(36), db.ForeignKey("topics.id"),         primary_key=True),
 )
 
-# Association table: Question ↔ Resource
 question_resources = db.Table(
     "question_resources",
     db.Column("question_id", db.String(36), db.ForeignKey("questions.id"),  primary_key=True),
@@ -488,7 +522,6 @@ question_resources = db.Table(
 
 class QuestionBank(db.Model):
     __tablename__ = "question_banks"
-
     id          = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     project_id  = db.Column(db.String(36), db.ForeignKey("projects.id"), nullable=False, index=True)
     created_by  = db.Column(db.String(36), db.ForeignKey("users.id"),    nullable=False)
@@ -497,11 +530,9 @@ class QuestionBank(db.Model):
     is_active   = db.Column(db.Boolean, default=True)
     created_at  = db.Column(db.DateTime(timezone=True), default=now_utc)
     updated_at  = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
-
     min_beginner     = db.Column(db.Integer, default=0)
     min_intermediate = db.Column(db.Integer, default=0)
     min_advanced     = db.Column(db.Integer, default=0)
-
     project   = db.relationship("Project",  foreign_keys=[project_id])
     creator   = db.relationship("User",     foreign_keys=[created_by])
     topics    = db.relationship("Topic",    secondary=bank_topics, lazy="select",
@@ -509,11 +540,7 @@ class QuestionBank(db.Model):
     questions = db.relationship("Question", back_populates="bank", lazy="dynamic")
 
     def difficulty_counts(self):
-        counts = {
-            DifficultyLevel.BEGINNER:     0,
-            DifficultyLevel.INTERMEDIATE: 0,
-            DifficultyLevel.ADVANCED:     0,
-        }
+        counts = {DifficultyLevel.BEGINNER: 0, DifficultyLevel.INTERMEDIATE: 0, DifficultyLevel.ADVANCED: 0}
         for q in self.questions.filter_by(is_active=True):
             if q.difficulty in counts:
                 counts[q.difficulty] += 1
@@ -522,36 +549,23 @@ class QuestionBank(db.Model):
     def validate_difficulty_quotas(self):
         counts = self.difficulty_counts()
         errors = []
-        checks = [
-            (DifficultyLevel.BEGINNER,     self.min_beginner,     "beginner"),
+        for level, minimum, label in [
+            (DifficultyLevel.BEGINNER, self.min_beginner, "beginner"),
             (DifficultyLevel.INTERMEDIATE, self.min_intermediate, "intermediate"),
-            (DifficultyLevel.ADVANCED,     self.min_advanced,     "advanced"),
-        ]
-        for level, minimum, label in checks:
+            (DifficultyLevel.ADVANCED, self.min_advanced, "advanced"),
+        ]:
             if counts[level] < minimum:
-                errors.append(
-                    f"Requires at least {minimum} {label} question(s); "
-                    f"currently has {counts[level]}."
-                )
+                errors.append(f"Requires at least {minimum} {label} question(s); currently has {counts[level]}.")
         return errors
 
     def to_dict(self, include_questions=False):
         data = {
-            "id":          self.id,
-            "project_id":  self.project_id,
-            "created_by":  self.created_by,
-            "title":       self.title,
-            "description": self.description,
-            "is_active":   self.is_active,
-            "created_at":  self.created_at.isoformat(),
-            "updated_at":  self.updated_at.isoformat(),
-            "difficulty_quotas": {
-                "min_beginner":     self.min_beginner,
-                "min_intermediate": self.min_intermediate,
-                "min_advanced":     self.min_advanced,
-            },
+            "id": self.id, "project_id": self.project_id, "created_by": self.created_by,
+            "title": self.title, "description": self.description, "is_active": self.is_active,
+            "created_at": self.created_at.isoformat(), "updated_at": self.updated_at.isoformat(),
+            "difficulty_quotas": {"min_beginner": self.min_beginner, "min_intermediate": self.min_intermediate, "min_advanced": self.min_advanced},
             "difficulty_counts": self.difficulty_counts(),
-            "total_questions":   self.questions.filter_by(is_active=True).count(),
+            "total_questions": self.questions.filter_by(is_active=True).count(),
             "topics": [t.to_dict() for t in self.topics],
         }
         if include_questions:
@@ -561,11 +575,10 @@ class QuestionBank(db.Model):
 
 class Question(db.Model):
     __tablename__ = "questions"
-
-    id           = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    bank_id      = db.Column(db.String(36), db.ForeignKey("question_banks.id"), nullable=False, index=True)
-    topic_id     = db.Column(db.String(36), db.ForeignKey("topics.id"),         nullable=False, index=True)
-    created_by   = db.Column(db.String(36), db.ForeignKey("users.id"),          nullable=False)
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    bank_id       = db.Column(db.String(36), db.ForeignKey("question_banks.id"), nullable=False, index=True)
+    topic_id      = db.Column(db.String(36), db.ForeignKey("topics.id"),         nullable=False, index=True)
+    created_by    = db.Column(db.String(36), db.ForeignKey("users.id"),          nullable=False)
     text          = db.Column(db.Text,       nullable=False)
     question_type = db.Column(db.String(20), nullable=False, default=QuestionType.MCQ)
     difficulty    = db.Column(db.String(20), nullable=False, default=DifficultyLevel.BEGINNER)
@@ -578,7 +591,6 @@ class Question(db.Model):
     is_active  = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime(timezone=True), default=now_utc)
     updated_at = db.Column(db.DateTime(timezone=True), default=now_utc, onupdate=now_utc)
-
     bank      = db.relationship("QuestionBank", back_populates="questions")
     topic     = db.relationship("Topic")
     creator   = db.relationship("User", foreign_keys=[created_by])
@@ -587,32 +599,86 @@ class Question(db.Model):
 
     def to_dict(self, include_answer=False):
         data = {
-            "id":            self.id,
-            "bank_id":       self.bank_id,
-            "topic_id":      self.topic_id,
-            "created_by":    self.created_by,
-            "text":          self.text,
-            "question_type": self.question_type,
-            "difficulty":    self.difficulty,
-            "options":       self.options or [],
-            "explanation":   self.explanation,
-            "points":        self.points,
-            "time_limit_seconds": self.time_limit_seconds,
-            "tags":          self.tags or [],
-            "created_at":    self.created_at.isoformat(),
-            "resources":     [r.to_dict() for r in self.resources],
-            "topic":         self.topic.to_dict() if self.topic else None,
+            "id": self.id, "bank_id": self.bank_id, "topic_id": self.topic_id,
+            "created_by": self.created_by, "text": self.text, "question_type": self.question_type,
+            "difficulty": self.difficulty, "options": self.options or [], "explanation": self.explanation,
+            "points": self.points, "time_limit_seconds": self.time_limit_seconds, "tags": self.tags or [],
+            "created_at": self.created_at.isoformat(),
+            "resources": [r.to_dict() for r in self.resources],
+            "topic": self.topic.to_dict() if self.topic else None,
         }
         if include_answer:
             data["correct_answer"] = self.correct_answer
         return data
 
+
 class SubmissionScan(db.Model):
-    __tablename__ = 'submission_scans'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    submission_id = db.Column(db.String(36), db.ForeignKey('submissions.id'), nullable=False)
-    ai_score = db.Column(db.Numeric(5, 2))
+    __tablename__ = "submission_scans"
+    id               = db.Column(db.Integer, primary_key=True)
+    submission_id    = db.Column(db.String(36), db.ForeignKey("submissions.id"), nullable=False)
+    ai_score         = db.Column(db.Numeric(5, 2))
     similarity_score = db.Column(db.Numeric(5, 2))
-    status = db.Column(db.String(50), default='completed')
-    scanned_at = db.Column(db.DateTime, server_default=db.func.now())
+    status           = db.Column(db.String(50), default="completed")
+    scanned_at       = db.Column(db.DateTime, server_default=db.func.now())
+
+
+# ── Courses ───────────────────────────────────────────────────────────────────
+
+class Course(db.Model):
+    __tablename__ = "courses"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    code          = db.Column(db.String(20), unique=True, nullable=False)
+    title         = db.Column(db.String(200), nullable=False)
+    description   = db.Column(db.Text, nullable=True)
+    credits       = db.Column(db.Integer, default=3)
+    topic_keyword = db.Column(db.String(100), nullable=True)
+    instructor_id = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=True)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+    instructor  = db.relationship("User", foreign_keys=[instructor_id])
+    enrollments = db.relationship("CourseEnrollment", back_populates="course", lazy="dynamic")
+    time_logs   = db.relationship("TimeLog", back_populates="course", lazy="dynamic")
+
+    def to_dict(self):
+        return {
+            "id": self.id, "code": self.code, "title": self.title,
+            "description": self.description, "credits": self.credits,
+            "topic_keyword": self.topic_keyword,
+            "instructor": self.instructor.full_name if self.instructor else None,
+        }
+
+
+class CourseEnrollment(db.Model):
+    __tablename__ = "course_enrollments"
+    id          = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    course_id   = db.Column(db.String(36), db.ForeignKey("courses.id"), nullable=False)
+    student_id  = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False)
+    enrolled_at = db.Column(db.DateTime(timezone=True), default=now_utc)
+    course  = db.relationship("Course", back_populates="enrollments")
+    student = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("course_id", "student_id"),)
+
+
+# ── Time Logs ─────────────────────────────────────────────────────────────────
+
+class TimeLog(db.Model):
+    __tablename__ = "time_logs"
+    id            = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    user_id       = db.Column(db.String(36), db.ForeignKey("users.id"), nullable=False, index=True)
+    course_id     = db.Column(db.String(36), db.ForeignKey("courses.id"), nullable=True)
+    assignment_id = db.Column(db.String(36), db.ForeignKey("assignments.id"), nullable=True)
+    description   = db.Column(db.String(300), nullable=True)
+    minutes       = db.Column(db.Integer, nullable=False)
+    log_type      = db.Column(db.String(20), default="study")
+    logged_at     = db.Column(db.Date, nullable=False)
+    created_at    = db.Column(db.DateTime(timezone=True), default=now_utc)
+    user       = db.relationship("User")
+    course     = db.relationship("Course", back_populates="time_logs")
+    assignment = db.relationship("Assignment")
+
+    def to_dict(self):
+        return {
+            "id": self.id, "course_id": self.course_id, "assignment_id": self.assignment_id,
+            "description": self.description, "minutes": self.minutes, "log_type": self.log_type,
+            "logged_at": self.logged_at.isoformat() if self.logged_at else None,
+            "course_title": self.course.title if self.course else None,
+        }

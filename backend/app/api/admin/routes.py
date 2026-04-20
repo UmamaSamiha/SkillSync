@@ -7,9 +7,9 @@ student classification, engagement overview.
 
 from flask import jsonify,Blueprint, request
 from flask_jwt_extended import jwt_required
-from app.services.ai_detection import check_ai_similarity, compute_similarity, analyze_submission as run_ai_analysis
-from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, SubmissionScan
-from app.utils.helpers import success, error, admin_required
+
+from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, Notification, Project, ProjectMember
+from app.utils.helpers import success, error, admin_required, get_current_user
 from app.services.risk_engine import recalculate_risk
 from app import db
 from sqlalchemy import func
@@ -28,12 +28,16 @@ def admin_overview():
     total_teachers  = User.query.filter_by(role="teacher", is_active=True).count()
     flagged_count   = Submission.query.filter_by(flagged=True).count()
     high_risk_count = RiskProfile.query.filter_by(risk_level="high").count()
+    pending_count   = User.query.filter_by(is_active=False).filter(
+        User.role.in_(["student", "teacher"])
+    ).count()
 
     return success({
         "total_students":  total_students,
         "total_teachers":  total_teachers,
         "flagged_count":   flagged_count,
         "high_risk_count": high_risk_count,
+        "pending_count":   pending_count,
     })
 
 # ── GET /api/admin/submissions ────────────────────────────────────────
@@ -42,33 +46,69 @@ def get_all_submissions():
     try:
         submissions = Submission.query.all()
         data = []
-        
         for sub in submissions:
-            # 1. Get the base dynamic dictionary from your model
             sub_dict = sub.to_dict()
-            
-            # 2. Dynamically enrich it with relational data 
-            # (So React doesn't have to make 100 separate API calls to figure out who "student_id: 123" is)
             sub_dict['student_name'] = sub.student.full_name if sub.student else "Unknown Student"
             sub_dict['assignment_title'] = sub.assignment.title if sub.assignment else "Unknown Assignment"
-            
-            # 3. Check for AI Score (Fallback to the SubmissionScan table if it's missing on the main model)
             if sub_dict.get('ai_score') is None:
                 scan = SubmissionScan.query.filter_by(submission_id=sub.id).order_by(SubmissionScan.scanned_at.desc()).first()
                 sub_dict['ai_score'] = float(scan.ai_score) if scan and scan.ai_score else None
-                
             data.append(sub_dict)
-
-        # 4. The Universal Envelope: Always wrap lists in a {"success": True, "data": [...]} object
-        return jsonify({
-            "success": True,
-            "count": len(data),
-            "data": data
-        }), 200
-
+        return jsonify({"success": True, "count": len(data), "data": data}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-    
+
+
+# ── GET /api/admin/pending-users ──────────────────────────────────────────────
+@admin_bp.route("/pending-users", methods=["GET"])
+@jwt_required()
+@admin_required
+def pending_users():
+    users = User.query.filter_by(is_active=False).filter(
+        User.role.in_(["student", "teacher"])
+    ).order_by(User.created_at.desc()).all()
+    return success([u.to_dict() for u in users])
+
+
+# ── POST /api/admin/approve-user/<user_id> ────────────────────────────────────
+@admin_bp.route("/approve-user/<user_id>", methods=["POST"])
+@jwt_required()
+@admin_required
+def approve_user(user_id):
+    user = User.query.get_or_404(str(user_id))
+    if user.is_active:
+        return error("User is already active", 400)
+    user.is_active = True
+    db.session.flush()
+    if user.role == "student":
+        active_projects = Project.query.filter_by(is_active=True).all()
+        for project in active_projects:
+            already = ProjectMember.query.filter_by(project_id=project.id, user_id=user.id).first()
+            if not already:
+                db.session.add(ProjectMember(project_id=project.id, user_id=user.id, role_in_group="member"))
+    n = Notification(
+        user_id=user.id,
+        title="Account Approved!",
+        message=f"Welcome to SkillSync, {user.full_name}! Your account has been approved. You can now login.",
+        type="info", entity_type="user", entity_id=user.id,
+    )
+    db.session.add(n)
+    db.session.commit()
+    return success(user.to_dict(), f"{user.full_name}'s account approved")
+
+
+# ── POST /api/admin/reject-user/<user_id> ─────────────────────────────────────
+@admin_bp.route("/reject-user/<user_id>", methods=["POST"])
+@jwt_required()
+@admin_required
+def reject_user(user_id):
+    user = User.query.get_or_404(str(user_id))
+    if user.is_active:
+        return error("Cannot reject an already active user", 400)
+    name = user.full_name
+    db.session.delete(user)
+    db.session.commit()
+    return success(None, f"{name}'s registration rejected")
 # ── GET /api/admin/flagged-submissions ────────────────────────────────────────
 @admin_bp.route("/flagged-submissions", methods=["GET"])
 @jwt_required()
@@ -117,7 +157,6 @@ def risk_alerts():
 @jwt_required()
 @admin_required
 def recalc_risk(user_id):
-    # FIX: user_id is UUID string
     user = User.query.get_or_404(str(user_id))
     profile = recalculate_risk(user.id)
     return success(profile.to_dict(), "Risk profile recalculated")
@@ -128,7 +167,6 @@ def recalc_risk(user_id):
 @jwt_required()
 @admin_required
 def recalc_all_risk():
-    """Recalculate risk for every active student."""
     students = User.query.filter_by(role="student", is_active=True).all()
     updated  = []
 
@@ -151,7 +189,6 @@ def recalc_all_risk():
 @jwt_required()
 @admin_required
 def send_risk_alerts():
-    """Send risk alert emails to all medium/high risk students via Resend API."""
     api_key = os.getenv("RESEND_API_KEY")
     if not api_key:
         return error("RESEND_API_KEY not configured in .env", 500)
@@ -234,7 +271,6 @@ def student_classification():
         risk_level  = risk.risk_level  if risk else "low"
         grade_trend = risk.grade_trend if risk else "stable"
 
-        # Study hours
         total_minutes = db.session.query(
             func.sum(FocusSession.duration_minutes)
         ).filter_by(user_id=s.id).scalar() or 0
@@ -253,16 +289,16 @@ def student_classification():
     return success(result)
 
 
-# ── GET /api/admin/personalized-feedback/<user_id> ───────────────────────────
 @admin_bp.route("/personalized-feedback/<user_id>", methods=["GET"])
 @jwt_required()
-@admin_required
 def personalized_feedback(user_id):
-    """
-    Generate personalized feedback message for a student
-    based on their classification, risk level, and grade trend.
-    """
-    user = User.query.filter_by(id=str(user_id), role="student").first()
+    current = get_current_user()
+    if not current:
+        return error("Unauthorized", 401)
+    if current.role == "student" and str(current.id) != str(user_id):
+        return error("Forbidden", 403)
+
+    user = User.query.filter_by(id=str(user_id)).first()
     if not user:
         return error("Student not found", 404)
 
@@ -352,8 +388,6 @@ def _classify(avg: float, risk) -> str:
 
 
 def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
-    """Build structured personalized feedback based on student profile."""
-
     base = {
         "Consistent Performer": {
             "tone":    "encouraging",
@@ -389,7 +423,6 @@ def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
 
     result = base.get(classification, base["Average"]).copy()
 
-    # Append flag-specific tips
     if risk and risk.flags:
         if "frequent_late_submissions" in risk.flags:
             result["actions"].append("Submit assignments before deadlines")
@@ -404,8 +437,6 @@ def _build_feedback(name: str, classification: str, risk, avg: float) -> dict:
 # ── EMAIL BUILDER ─────────────────────────────────────────────────────────────
 
 def _build_email(student, profile) -> tuple:
-    """Build subject and HTML email for a risk alert."""
-
     risk_level  = profile.risk_level
     grade_trend = profile.grade_trend or "stable"
     late_count  = profile.late_submission_count or 0

@@ -121,6 +121,26 @@ def upload_avatar(user_id):
     return success({"avatar_url": user.avatar_url}, "Avatar uploaded")
 
 
+# ── GET /api/users/me/projects ───────────────────────────────────────────────
+
+@users_bp.route("/me/projects", methods=["GET"])
+@jwt_required()
+def my_projects():
+    """Return projects for the current user.
+    Teachers/admins see all projects; students see only their memberships."""
+    user = get_current_user()
+    if user.role in ["teacher", "admin"]:
+        projects = [p.to_dict() for p in Project.query.filter_by(is_active=True).all()]
+    else:
+        memberships = ProjectMember.query.filter_by(user_id=user.id, is_active=True).all()
+        projects = []
+        for m in memberships:
+            p = m.project.to_dict()
+            p["role_in_group"] = m.role_in_group
+            projects.append(p)
+    return success(projects)
+
+
 # ── GET /api/users/<id>/projects ─────────────────────────────────────────────
 
 @users_bp.route("/<user_id>/projects", methods=["GET"])

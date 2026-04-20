@@ -1,11 +1,22 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Timer, History, BarChart2, FolderOpen, Award, BookOpen, ShieldAlert, Users, LogOut, Settings } from 'lucide-react';
+import {
+  LayoutDashboard, Timer, History, BarChart2, FolderOpen,
+  Award, BookOpen, ShieldAlert, Users, LogOut, Settings,
+  FileText, Bell, GraduationCap, Clock, PieChart
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import './Sidebar.css';
 
+const teacherNav = [
+  { to: '/teacher',       icon: GraduationCap, label: 'Dashboard'     },
+  { to: '/courses',       icon: BookOpen,      label: 'Courses'       },
+  { to: '/assignments',   icon: FileText,      label: 'Assignments'   },
+  { to: '/contributions', icon: PieChart,      label: 'Contributions' },
+  { to: '/analytics',     icon: BarChart2,     label: 'Analytics'     },
+  { to: '/notifications', icon: Bell,          label: 'Notifications' },
+];
 const adminNav = [
-  { to: '/admin',        icon: ShieldAlert,     label: 'Admin Panel'  },
-  { to: '/admin/users',  icon: Users,           label: 'Users'        },
+  { to: '/admin', icon: ShieldAlert, label: 'Admin Panel' },
 ];
 
 function getInitials(name = '') {
@@ -13,14 +24,18 @@ function getInitials(name = '') {
 }
 
 export default function Sidebar() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isTeacher } = useAuth();
   const navigate = useNavigate();
 
-  const studentNav = [
+const studentNav = [
     { to: '/dashboard',             icon: LayoutDashboard, label: 'Dashboard'     },
     { to: '/heatmap',               icon: Users,           label: 'Heatmap'       },
     { to: '/focus',                 icon: Timer,           label: 'Focus Mode'    },
     { to: '/history',               icon: History,         label: 'History'       },
+    { to: '/courses',               icon: BookOpen,        label: 'Courses'       },
+    { to: '/assignments',           icon: FileText,        label: 'Assignments'   },
+    { to: '/timetracker',           icon: Clock,           label: 'Time Tracker'  },
+    { to: '/notifications',         icon: Bell,            label: 'Notifications' },
     { to: '/analytics',             icon: BarChart2,       label: 'Analytics'     },
     { to: `/portfolio/${user?.id}`, icon: FolderOpen,      label: 'Portfolio'     },
     { to: '/certificates',          icon: Award,           label: 'Certificates'  },
@@ -28,7 +43,7 @@ export default function Sidebar() {
     { to: '/settings',              icon: Settings,        label: 'Settings'      },
   ];
 
-  const navItems = isAdmin ? adminNav : studentNav;
+  const navItems = isAdmin ? adminNav : isTeacher ? teacherNav : studentNav;
 
   const handleLogout = async () => {
     await logout();

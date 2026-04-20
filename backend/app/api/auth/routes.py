@@ -13,7 +13,7 @@ from flask_jwt_extended import (
 )
 
 from app import db, bcrypt
-from app.models import User, RefreshToken, Role, ActivityLog
+from app.models import User, RefreshToken, Role, ActivityLog, Notification, Project, ProjectMember
 from app.utils.helpers import success, error, validate_required, get_current_user
 
 auth_bp = Blueprint("auth", __name__)
@@ -56,18 +56,42 @@ def register():
     if User.query.filter_by(email=email).first():
         return error("Email already registered", 409)
 
-    # Hash password and create user
+    # Hash password and create user — active immediately
     pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
     user = User(
         email=email,
         password_hash=pw_hash,
         full_name=full_name,
         role=role,
+        is_active=True,
     )
     db.session.add(user)
+    db.session.flush()
+
+    # Auto-enroll students in all active projects (joined_at = now keeps old assignments hidden)
+    if role == Role.STUDENT:
+        for project in Project.query.filter_by(is_active=True).all():
+            db.session.add(ProjectMember(
+                project_id=project.id,
+                user_id=user.id,
+                role_in_group="member",
+            ))
+
+    # Notify all admins about the new signup
+    admins = User.query.filter_by(role=Role.ADMIN, is_active=True).all()
+    for admin in admins:
+        n = Notification(
+            user_id     = admin.id,
+            title       = f"New {role.title()} Registration",
+            message     = f"{full_name} ({email}) has registered as a {role}.",
+            type        = "info",
+            entity_type = "user",
+            entity_id   = user.id,
+        )
+        db.session.add(n)
+
     db.session.commit()
 
-    # Issue tokens
     access_token  = create_access_token(identity=user.id)
     refresh_token = create_refresh_token(identity=user.id)
 
@@ -102,7 +126,7 @@ def login():
         return error("Invalid email or password", 401)
 
     if not user.is_active:
-        return error("Account is deactivated. Contact your administrator.", 403)
+        return error("Your account is pending admin approval. Please wait for verification.", 403)
 
     # Update last active
     user.last_active = datetime.now(timezone.utc)

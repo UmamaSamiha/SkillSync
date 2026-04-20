@@ -6,5 +6,12 @@ export const API = {
   analyticsClassification: "/analytics/classification",
   analyticsSummary: "/analytics/summary",
   certificates: "/certificates",
+
   heatmap: "/heatmap",
+
+  assignments: "/assignments/",
+  notifications: "/notifications/",
+  notificationsUnreadCount: "/notifications/unread-count",
+  notificationsReadAll: "/notifications/read-all",
+
 };
