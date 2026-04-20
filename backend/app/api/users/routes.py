@@ -6,9 +6,10 @@ User profile management, project membership, avatar upload.
 
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
+from sqlalchemy.orm.attributes import flag_modified
 
 from app import db
-from app.models import User, Project, ProjectMember
+from app.models import User, Project, ProjectMember, Notification, RiskProfile, RiskLevel
 from app.utils.helpers import (
     success, error, paginate, get_current_user,
     admin_required, teacher_or_admin, allowed_file, save_upload
@@ -37,15 +38,36 @@ def list_users():
 @users_bp.route("/<user_id>", methods=["GET"])
 @jwt_required()
 def get_user(user_id):
-    """Get a specific user's public profile."""
+    """Get a specific user's public profile.
+    Admin/teacher can see anyone.
+    Students can see themselves OR any member who shares a project with them.
+    """
     current = get_current_user()
-    user = User.query.get_or_404(user_id)
+    user    = User.query.get_or_404(user_id)
 
-    # Students can only view their own profile unless admin/teacher
-    if current.role not in ["admin", "teacher"] and current.id != user_id:
-        return error("Forbidden", 403)
+    # Admin / teacher — unrestricted
+    if current.role in ["admin", "teacher"]:
+        return success(user.to_dict())
 
-    return success(user.to_dict())
+    # Own profile
+    if current.id == user_id:
+        return success(user.to_dict())
+
+    # Same project — students may view each other's profiles
+    current_project_ids = db.session.query(ProjectMember.project_id).filter_by(
+        user_id=current.id, is_active=True
+    ).subquery()
+
+    shared = ProjectMember.query.filter(
+        ProjectMember.user_id    == user_id,
+        ProjectMember.is_active  == True,
+        ProjectMember.project_id.in_(current_project_ids),
+    ).first()
+
+    if shared:
+        return success(user.to_dict())
+
+    return error("Forbidden", 403)
 
 
 # ── PUT /api/users/<id> ───────────────────────────────────────────────────────
@@ -61,13 +83,11 @@ def update_user(user_id):
     user = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
 
-    # Updateable fields
     if "full_name" in data:
         user.full_name = data["full_name"].strip()[:150]
     if "avatar_url" in data:
         user.avatar_url = data["avatar_url"]
 
-    # Only admin can change roles
     if "role" in data and current.role == "admin":
         if data["role"] in ["admin", "teacher", "student"]:
             user.role = data["role"]
@@ -119,6 +139,79 @@ def user_projects(user_id):
         projects.append(p)
 
     return success(projects)
+
+
+# ── POST /api/users/<id>/remind ───────────────────────────────────────────────
+
+@users_bp.route("/<user_id>/remind", methods=["POST"])
+@jwt_required()
+def send_reminder(user_id):
+    """Send a reminder notification to a specific member (teacher/admin only)."""
+    user = User.query.get_or_404(user_id)
+    data = request.get_json(silent=True) or {}
+
+    message = data.get(
+        "message",
+        "Your instructor has sent you a reminder to stay active and keep up with your project work."
+    )
+
+    notif = Notification(
+        user_id     = user_id,
+        title       = "Reminder from Instructor",
+        message     = message,
+        type        = "system",
+        entity_type = "reminder",
+    )
+    db.session.add(notif)
+    db.session.commit()
+
+    return success({"recipient": user.full_name}, f"Reminder sent to {user.full_name}")
+
+
+# ── POST /api/users/<id>/flag-inactive ───────────────────────────────────────
+
+@users_bp.route("/<user_id>/flag-inactive", methods=["POST"])
+@jwt_required()
+def flag_inactive(user_id):
+    """Flag a member as inactive in a specific project (teacher/admin only).
+    Body: { "project_id": "..." }  (optional — flags all memberships if omitted)
+    """
+    user       = User.query.get_or_404(user_id)
+    data       = request.get_json(silent=True) or {}
+    project_id = data.get("project_id")
+
+    # Verify the user has an active membership (but don't remove them from the project)
+    query = ProjectMember.query.filter_by(user_id=user_id, is_active=True)
+    if project_id:
+        query = query.filter_by(project_id=project_id)
+
+    memberships = query.all()
+    if not memberships:
+        return error("No active membership found for this user", 404)
+
+    # Escalate their risk profile to HIGH so dashboards pick it up
+    risk = RiskProfile.query.filter_by(user_id=user_id).first()
+    if risk:
+        risk.risk_level = RiskLevel.HIGH
+        flags = list(risk.flags or [])
+        if "manually_flagged_inactive" not in flags:
+            flags.append("manually_flagged_inactive")
+        risk.flags = flags
+        flag_modified(risk, "flags")
+
+    # Send them an in-app notification
+    notif = Notification(
+        user_id     = user_id,
+        title       = "You have been flagged as inactive",
+        message     = "Your instructor has marked you as inactive. Please re-engage with your project as soon as possible.",
+        type        = "warning",
+        entity_type = "project",
+        entity_id   = project_id,
+    )
+    db.session.add(notif)
+    db.session.commit()
+
+    return success({"flagged": user.full_name}, f"{user.full_name} flagged as inactive")
 
 
 # ── DELETE /api/users/<id> ────────────────────────────────────────────────────
