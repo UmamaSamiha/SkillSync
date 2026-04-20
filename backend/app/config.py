@@ -64,12 +64,11 @@ class BaseConfig:
 
 
 class DevelopmentConfig(BaseConfig):
-    """Development — verbose, SQLite-friendly."""
     DEBUG               = True
-    SQLALCHEMY_ECHO     = True   # Log all SQL queries
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1)  # Longer for dev
-
-
+    SQLALCHEMY_ECHO     = True
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1)
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///skillsync.db")
+    
 class ProductionConfig(BaseConfig):
     """Production — strict, PostgreSQL required."""
     DEBUG   = False

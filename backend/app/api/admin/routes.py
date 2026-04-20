@@ -5,7 +5,7 @@ Admin-only: risk detection, AI/similarity flags,
 student classification, engagement overview.
 """
 
-from flask import Blueprint, request
+from flask import jsonify,Blueprint, request
 from flask_jwt_extended import jwt_required
 
 from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, Notification, Project, ProjectMember
@@ -16,7 +16,7 @@ from sqlalchemy import func
 import os
 import requests
 
-admin_bp = Blueprint("admin", __name__)
+admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
 
 # ── GET /api/admin/overview ───────────────────────────────────────────────────
@@ -40,17 +40,33 @@ def admin_overview():
         "pending_count":   pending_count,
     })
 
+# ── GET /api/admin/submissions ────────────────────────────────────────
+@admin_bp.route('/submissions', methods=['GET'])
+def get_all_submissions():
+    try:
+        submissions = Submission.query.all()
+        data = []
+        for sub in submissions:
+            sub_dict = sub.to_dict()
+            sub_dict['student_name'] = sub.student.full_name if sub.student else "Unknown Student"
+            sub_dict['assignment_title'] = sub.assignment.title if sub.assignment else "Unknown Assignment"
+            if sub_dict.get('ai_score') is None:
+                scan = SubmissionScan.query.filter_by(submission_id=sub.id).order_by(SubmissionScan.scanned_at.desc()).first()
+                sub_dict['ai_score'] = float(scan.ai_score) if scan and scan.ai_score else None
+            data.append(sub_dict)
+        return jsonify({"success": True, "count": len(data), "data": data}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ── GET /api/admin/pending-users ──────────────────────────────────────────────
 @admin_bp.route("/pending-users", methods=["GET"])
 @jwt_required()
 @admin_required
 def pending_users():
-    """Get all users pending approval."""
     users = User.query.filter_by(is_active=False).filter(
         User.role.in_(["student", "teacher"])
     ).order_by(User.created_at.desc()).all()
-
     return success([u.to_dict() for u in users])
 
 
@@ -59,41 +75,25 @@ def pending_users():
 @jwt_required()
 @admin_required
 def approve_user(user_id):
-    """Approve a pending user account."""
     user = User.query.get_or_404(str(user_id))
-
     if user.is_active:
         return error("User is already active", 400)
-
     user.is_active = True
     db.session.flush()
-
-    # Enroll student in all active projects (joined_at = now, so old assignments stay hidden)
     if user.role == "student":
         active_projects = Project.query.filter_by(is_active=True).all()
         for project in active_projects:
-            already = ProjectMember.query.filter_by(
-                project_id=project.id, user_id=user.id
-            ).first()
+            already = ProjectMember.query.filter_by(project_id=project.id, user_id=user.id).first()
             if not already:
-                db.session.add(ProjectMember(
-                    project_id=project.id,
-                    user_id=user.id,
-                    role_in_group="member",
-                ))
-
-    # Notify the user that their account is approved
+                db.session.add(ProjectMember(project_id=project.id, user_id=user.id, role_in_group="member"))
     n = Notification(
-        user_id     = user.id,
-        title       = "Account Approved!",
-        message     = f"Welcome to SkillSync, {user.full_name}! Your account has been approved. You can now login.",
-        type        = "info",
-        entity_type = "user",
-        entity_id   = user.id,
+        user_id=user.id,
+        title="Account Approved!",
+        message=f"Welcome to SkillSync, {user.full_name}! Your account has been approved. You can now login.",
+        type="info", entity_type="user", entity_id=user.id,
     )
     db.session.add(n)
     db.session.commit()
-
     return success(user.to_dict(), f"{user.full_name}'s account approved")
 
 
@@ -102,19 +102,13 @@ def approve_user(user_id):
 @jwt_required()
 @admin_required
 def reject_user(user_id):
-    """Reject and delete a pending user account."""
     user = User.query.get_or_404(str(user_id))
-
     if user.is_active:
         return error("Cannot reject an already active user", 400)
-
     name = user.full_name
     db.session.delete(user)
     db.session.commit()
-
     return success(None, f"{name}'s registration rejected")
-
-
 # ── GET /api/admin/flagged-submissions ────────────────────────────────────────
 @admin_bp.route("/flagged-submissions", methods=["GET"])
 @jwt_required()
@@ -324,6 +318,60 @@ def personalized_feedback(user_id):
         "flags":          risk.flags      if risk else [],
     })
 
+# ── GET /api/admin/ai/───────────────────────────
+
+@admin_bp.route('/submissions/<submission_id>/analyze', methods=['POST'])
+def analyze_submission_route(submission_id):   # <-- route function renamed too
+    try:
+        submission = Submission.query.get(submission_id)
+        if not submission or not submission.content:
+            return jsonify({"success": False, "error": "Submission not found or has no content"}), 404
+
+        # ✅ Now calls Claude + heuristic blended score
+        result = run_ai_analysis(submission.content)
+
+        # Plagiarism check (keep your existing logic)
+        other_submissions = Submission.query.filter(
+            Submission.assignment_id == submission.assignment_id,
+            Submission.id != submission.id,
+            Submission.content.isnot(None)
+        ).all()
+
+        max_similarity = 0.0
+        for other_sub in other_submissions:
+            sim = compute_similarity(submission.content, other_sub.content)
+            if sim > max_similarity:
+                max_similarity = sim
+
+        similarity_score_percent = round(max_similarity * 100, 2)
+
+        # Persist both scores
+        submission.ai_score = result["ai_score"]
+        submission.similarity_score = similarity_score_percent
+
+        # Flag if either threshold exceeded
+        if result["ai_score"] > 60 or similarity_score_percent > 50.0:
+            submission.flagged = True
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Analysis complete",
+            "data": {
+                "ai_score":         result["ai_score"],
+                "heuristic_score":  result["heuristic_score"],
+                "claude_score":     result["claude_score"],
+                "similarity_score": similarity_score_percent,
+                "confidence":       result["confidence"],
+                "reason":           result["reason"],
+                "flagged":          result["flagged"],
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # ── CLASSIFICATION ENGINE ─────────────────────────────────────────────────────
 

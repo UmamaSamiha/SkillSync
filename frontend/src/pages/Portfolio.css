@@ -1,0 +1,259 @@
+.portfolio-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.portfolio-loading,
+.portfolio-error {
+  text-align: center;
+  padding: 4rem;
+  color: var(--color-text-muted, #aaa);
+  font-size: 1.1rem;
+}
+
+.portfolio-error {
+  color: var(--color-danger, #f87171);
+}
+
+/* ── Header ── */
+.portfolio-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: var(--color-surface, #1e1e2e);
+  border: 1px solid var(--color-border, #2e2e3e);
+  border-radius: 14px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.portfolio-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--color-primary, #7c3aed);
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.portfolio-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portfolio-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-text, #fff);
+  margin: 0 0 0.4rem 0;
+}
+
+.portfolio-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.portfolio-links a {
+  color: var(--color-primary, #7c3aed);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.portfolio-links a:hover {
+  text-decoration: underline;
+}
+
+/* ── Cards ── */
+.portfolio-card {
+  background: var(--color-surface, #1e1e2e);
+  border: 1px solid var(--color-border, #2e2e3e);
+  border-radius: 14px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.portfolio-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-primary, #7c3aed);
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border, #2e2e3e);
+}
+
+.portfolio-bio {
+  color: var(--color-text-muted, #ccc);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Skills ── */
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.skill-tag {
+  background: var(--color-primary-faint, #7c3aed22);
+  color: var(--color-primary-light, #a78bfa);
+  border: 1px solid var(--color-primary-muted, #7c3aed55);
+  padding: 0.3rem 0.9rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+}
+
+/* ── Projects ── */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.project-card {
+  background: var(--color-surface-2, #2a2a3e);
+  border: 1px solid var(--color-border, #3e3e5e);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.project-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.project-card h3 {
+  color: var(--color-text, #fff);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.project-card p {
+  color: var(--color-text-muted, #aaa);
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem 0;
+}
+
+.project-role {
+  color: var(--color-primary, #7c3aed);
+  font-size: 0.8rem;
+}
+
+.featured-badge {
+  background: var(--color-primary, #7c3aed);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* ── Certificates ── */
+.certs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.cert-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--color-surface-2, #2a2a3e);
+  border: 1px solid var(--color-border, #3e3e5e);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.cert-icon {
+  font-size: 1.5rem;
+}
+
+.cert-card-right h3 {
+  color: var(--color-text, #fff);
+  font-size: 0.95rem;
+  margin: 0 0 0.2rem 0;
+}
+
+.cert-card-right p {
+  color: var(--color-text-muted, #aaa);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.edit-field label {
+  color: var(--color-text, #fff);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.edit-field input,
+.edit-field textarea {
+  background: var(--color-surface-2, #2a2a3e);
+  border: 1px solid var(--color-border, #3e3e5e);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  color: var(--color-text, #fff);
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.edit-field input:focus,
+.edit-field textarea:focus {
+  outline: none;
+  border-color: var(--color-primary, #7c3aed);
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.add-project-form {
+  background: var(--color-surface-2, #2a2a3e);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1rem;
+  border: 1px solid var(--color-border, #3e3e5e);
+}
+
+.btn {
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #3e3e5e);
+  background: transparent;
+  color: var(--color-text, #fff);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn:hover {
+  background: var(--color-surface-2, #2a2a3e);
+}
+
+.btn-primary {
+  background: var(--color-primary, #7c3aed) !important;
+  border-color: var(--color-primary, #7c3aed) !important;
+  color: #fff !important;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
