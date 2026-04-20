@@ -13,7 +13,7 @@ from flask_jwt_extended import (
 )
 
 from app import db, bcrypt
-from app.models import User, RefreshToken, Role, ActivityLog, Notification
+from app.models import User, RefreshToken, Role, ActivityLog, Notification, Project, ProjectMember
 from app.utils.helpers import success, error, validate_required, get_current_user
 
 auth_bp = Blueprint("auth", __name__)
@@ -67,6 +67,15 @@ def register():
     )
     db.session.add(user)
     db.session.flush()
+
+    # Auto-enroll students in all active projects (joined_at = now keeps old assignments hidden)
+    if role == Role.STUDENT:
+        for project in Project.query.filter_by(is_active=True).all():
+            db.session.add(ProjectMember(
+                project_id=project.id,
+                user_id=user.id,
+                role_in_group="member",
+            ))
 
     # Notify all admins about the new signup
     admins = User.query.filter_by(role=Role.ADMIN, is_active=True).all()
