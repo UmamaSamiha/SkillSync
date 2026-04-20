@@ -8,7 +8,7 @@ student classification, engagement overview.
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required
 
-from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, Notification
+from app.models import User, Submission, RiskProfile, GradeRecord, RiskLevel, FocusSession, Notification, Project, ProjectMember
 from app.utils.helpers import success, error, admin_required, get_current_user
 from app.services.risk_engine import recalculate_risk
 from app import db
@@ -67,6 +67,20 @@ def approve_user(user_id):
 
     user.is_active = True
     db.session.flush()
+
+    # Enroll student in all active projects (joined_at = now, so old assignments stay hidden)
+    if user.role == "student":
+        active_projects = Project.query.filter_by(is_active=True).all()
+        for project in active_projects:
+            already = ProjectMember.query.filter_by(
+                project_id=project.id, user_id=user.id
+            ).first()
+            if not already:
+                db.session.add(ProjectMember(
+                    project_id=project.id,
+                    user_id=user.id,
+                    role_in_group="member",
+                ))
 
     # Notify the user that their account is approved
     n = Notification(
