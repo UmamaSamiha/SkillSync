@@ -6,7 +6,7 @@ blueprints, and error handlers registered.
 """
 
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify   # FIXED
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
@@ -58,10 +58,9 @@ def create_app(config_name: str = None) -> Flask:
     from app.api.focus.routes        import focus_bp
     from app.api.heatmap.routes      import heatmap_bp
     from app.api.certificates.routes import certificates_bp
-    from app.api.ai.routes            import ai_bp
     from app.api.notifications.routes import notifications_bp
-    from app.api.courses.routes       import courses_bp
-    from app.api.timelogs.routes      import timelogs_bp
+    from app.api.courses.routes        import courses_bp
+    from app.api.timelogs.routes       import timelogs_bp
 
     app.register_blueprint(auth_bp,         url_prefix="/api/auth")
     app.register_blueprint(users_bp,        url_prefix="/api/users")
@@ -72,49 +71,72 @@ def create_app(config_name: str = None) -> Flask:
     app.register_blueprint(focus_bp,        url_prefix="/api/focus")
     app.register_blueprint(heatmap_bp,      url_prefix="/api/heatmap")
     app.register_blueprint(certificates_bp, url_prefix="/api/certificates")
-    app.register_blueprint(ai_bp,            url_prefix="/api/ai")
     app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
-    app.register_blueprint(courses_bp,       url_prefix="/api/courses")
-    app.register_blueprint(timelogs_bp,      url_prefix="/api/timelogs")
+    app.register_blueprint(courses_bp,      url_prefix="/api/courses")
+    app.register_blueprint(timelogs_bp,     url_prefix="/api/timelogs")
 
     # ── JWT Callbacks ─────────────────────────────────────────────
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):
-        return jsonify({"error": "Token has expired", "code": "TOKEN_EXPIRED"}), 401
+        return jsonify({
+            "error": "Token has expired",
+            "code": "TOKEN_EXPIRED"
+        }), 401
 
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
-        return jsonify({"error": "Invalid token", "code": "TOKEN_INVALID"}), 401
+        return jsonify({
+            "error": "Invalid token",
+            "code": "TOKEN_INVALID"
+        }), 401
 
     @jwt.unauthorized_loader
     def missing_token_callback(error):
-        return jsonify({"error": "Authorization token required", "code": "TOKEN_MISSING"}), 401
+        return jsonify({
+            "error": "Authorization token required",
+            "code": "TOKEN_MISSING"
+        }), 401
 
-    # ── Error Handlers ────────────────────────────────────────────
+    # ── Error Handlers (FIXED CLEAN OUTPUT) ───────────────────────
     @app.errorhandler(400)
     def bad_request(e):
-        return jsonify({"error": "Bad request"}), 400
+        return jsonify({
+            "error": "Bad request"
+        }), 400
 
     @app.errorhandler(403)
     def forbidden(e):
-        return jsonify({"error": "Forbidden", "message": "Insufficient permissions"}), 403
+        return jsonify({
+            "error": "Forbidden",
+            "message": "Insufficient permissions"
+        }), 403
 
     @app.errorhandler(404)
     def not_found(e):
-        return jsonify({"error": "Not found"}), 404
+        return jsonify({
+            "error": "Not found"
+        }), 404
 
     @app.errorhandler(422)
     def unprocessable(e):
-        return jsonify({"error": "Unprocessable entity"}), 422
+        return jsonify({
+            "error": "Unprocessable entity"
+        }), 422
 
     @app.errorhandler(500)
     def server_error(e):
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
 
     # ── Health Check ──────────────────────────────────────────────
     @app.route("/api/health")
     def health():
-        return jsonify({"status": "ok", "app": "SkillSync", "version": "1.0.0"})
+        return jsonify({
+            "status": "ok",
+            "app": "SkillSync",
+            "version": "1.0.0"
+        })
 
     @app.shell_context_processor
     def make_shell_context():

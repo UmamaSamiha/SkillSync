@@ -11,8 +11,6 @@ import AdminDashboard from './pages/AdminDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import Certificates from './pages/Certificates';
 import SignupPage from './pages/Signup';
-import PortfolioPage from './pages/Portfolio';
-import QuestionBankPage from './pages/QuestionBank';
 import AnalyticsPage from './pages/AnalyticsPage';
 import AssignmentsPage from './pages/Assignments';
 import NotificationsPage from './pages/Notifications';
@@ -66,23 +64,11 @@ function AppRoutes() {
       <Route path="/history" element={
         <PrivateRoute><HistoryPage /></PrivateRoute>
       }/>
-       <Route path="/heatmap" element={
-        <PrivateRoute><HeatmapPage /></PrivateRoute>
-      }/>
-      <Route path="/analytics" element={
-        <PrivateRoute><MemberDetailPage /></PrivateRoute>
-      }/>
       <Route path="/member/:userId" element={
         <PrivateRoute><MemberDetailPage /></PrivateRoute>
       }/>
-<Route path="/certificates" element={
+      <Route path="/certificates" element={
         <PrivateRoute><Certificates /></PrivateRoute>
-      }/>
-      <Route path="/portfolio/:userId" element={
-        <PrivateRoute><PortfolioPage /></PrivateRoute>
-      }/>
-      <Route path="/question-bank" element={
-        <PrivateRoute><QuestionBankPage /></PrivateRoute>
       }/>
 
       {/* Teacher routes */}
@@ -90,7 +76,7 @@ function AppRoutes() {
         <PrivateRoute teacherOnly={true}><TeacherDashboard /></PrivateRoute>
       }/>
 
-      {/* Shared routes */}
+      {/* Shared (student + teacher + admin) */}
       <Route path="/assignments" element={
         <PrivateRoute><AssignmentsPage /></PrivateRoute>
       }/>
@@ -100,6 +86,8 @@ function AppRoutes() {
       <Route path="/analytics" element={
         <PrivateRoute><AnalyticsPage /></PrivateRoute>
       }/>
+
+      {/* Shared feature routes */}
       <Route path="/courses" element={
         <PrivateRoute><CoursesPage /></PrivateRoute>
       }/>
@@ -108,7 +96,6 @@ function AppRoutes() {
       }/>
       <Route path="/contributions" element={
         <PrivateRoute><ContributionsPage /></PrivateRoute>
-      }/>
       }/>
 
       {/* Admin routes */}
